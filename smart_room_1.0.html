@@ -1,0 +1,1189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>隐逸智家 | 极简全感控制 · 震动守护</title>
+    <!-- MQTT 客户端库 -->
+    <script src="https://unpkg.com/mqtt@5.0.0/dist/mqtt.min.js"></script>
+    <!-- Font Awesome 6 (优雅图标库) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Google Fonts: 现代无衬线字体 -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: radial-gradient(circle at 10% 20%, rgba(248, 250, 252, 1) 0%, rgba(235, 242, 248, 1) 100%);
+            min-height: 100vh;
+            padding: 1.8rem 1.5rem;
+            color: #1f2a3e;
+        }
+
+        /* 主容器 */
+        .app-container {
+            max-width: 1280px;
+            margin: 0 auto;
+        }
+
+        /* 头部区域 — 留白与精致感 */
+        .hero {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            flex-wrap: wrap;
+            margin-bottom: 2.5rem;
+            gap: 1rem;
+        }
+        .brand h1 {
+            font-size: 1.9rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            background: linear-gradient(120deg, #1d2b3a, #2c4c5e);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+            margin-bottom: 0.2rem;
+        }
+        .brand p {
+            font-size: 0.85rem;
+            color: #5a6e82;
+            font-weight: 400;
+        }
+        .conn-status {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            padding: 0.45rem 1.2rem;
+            border-radius: 60px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid rgba(255,255,255,0.8);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+        }
+        .led {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: #cbd5e1;
+            transition: all 0.2s;
+        }
+        .led.online {
+            background: #10b981;
+            box-shadow: 0 0 6px #10b98180;
+        }
+        .led.connecting {
+            background: #f59e0b;
+            animation: pulse 1.2s infinite;
+        }
+        .led.offline {
+            background: #ef4444;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.5; transform: scale(0.9);}
+            100% { opacity: 1; transform: scale(1);}
+        }
+
+        /* 传感器网格 */
+        .sensor-dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.8rem;
+            margin-bottom: 2rem;
+        }
+
+        /* 通用卡片风格 */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.72);
+            backdrop-filter: blur(14px);
+            border-radius: 2rem;
+            border: 1px solid rgba(255,255,255,0.7);
+            box-shadow: 0 20px 35px -12px rgba(0, 0, 0, 0.08);
+            padding: 1.6rem 1.8rem;
+            transition: transform 0.25s ease, box-shadow 0.2s;
+        }
+        .glass-card:hover {
+            transform: translateY(-2px);
+            background: rgba(255, 255, 255, 0.8);
+            box-shadow: 0 28px 38px -16px rgba(0, 0, 0, 0.12);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.2rem;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            padding-bottom: 0.6rem;
+        }
+        .card-header h3 {
+            font-weight: 500;
+            font-size: 1.1rem;
+            color: #2c4a5e;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .card-header i {
+            font-size: 1.2rem;
+            color: #3f7e9c;
+        }
+
+        /* 数值主显示 */
+        .value-large {
+            font-size: 3rem;
+            font-weight: 650;
+            line-height: 1.1;
+            color: #1e2f3c;
+            display: flex;
+            align-items: baseline;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-bottom: 0.6rem;
+        }
+        .unit-sm {
+            font-size: 1rem;
+            font-weight: 400;
+            color: #6c849a;
+        }
+        .sensor-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 0.8rem;
+            font-size: 0.75rem;
+            color: #70879b;
+        }
+
+        /* 湿度条 / 光照进度条 */
+        .progress-bar-bg {
+            background: rgba(0, 0, 0, 0.08);
+            border-radius: 20px;
+            height: 6px;
+            width: 100%;
+            margin: 12px 0 8px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            width: 0%;
+            height: 100%;
+            border-radius: 20px;
+            background: linear-gradient(90deg, #3b82f6, #2c9e6e);
+            transition: width 0.35s ease-out;
+        }
+        .light-fill {
+            background: linear-gradient(90deg, #fbbf24, #f59e0b);
+        }
+
+        /* 震动状态特殊样式 */
+        .shock-status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin: 1rem 0;
+            font-size: 1.2rem;
+            font-weight: 500;
+            padding: 0.5rem;
+            border-radius: 1rem;
+            transition: all 0.2s;
+        }
+        .shock-icon {
+            font-size: 2rem;
+        }
+        .shock-text {
+            font-size: 1rem;
+            letter-spacing: 0.3px;
+        }
+        @keyframes shake {
+            0% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+            100% { transform: translateX(0); }
+        }
+        .shock-active {
+            background: rgba(239, 68, 68, 0.08);
+            animation: shake 0.4s ease-in-out;
+        }
+        .shock-inactive {
+            background: rgba(16, 185, 129, 0.05);
+        }
+
+        /* 控制区域布局 */
+        .control-panel {
+            margin-top: 0.5rem;
+        }
+        .control-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .ctrl-card {
+            background: rgba(255, 255, 255, 0.68);
+            backdrop-filter: blur(12px);
+            border-radius: 1.6rem;
+            padding: 1.2rem 1.5rem;
+            border: 1px solid rgba(255,255,255,0.8);
+            transition: all 0.2s;
+        }
+        .ctrl-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .device-title {
+            font-weight: 500;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        /* 切换开关 */
+        .toggle {
+            position: relative;
+            display: inline-block;
+            width: 52px;
+            height: 28px;
+        }
+        .toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #cbd5e1;
+            transition: 0.25s;
+            border-radius: 34px;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.25s;
+            border-radius: 50%;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        input:checked + .toggle-slider {
+            background-color: #2c7d5e;
+        }
+        input:checked + .toggle-slider:before {
+            transform: translateX(24px);
+        }
+        /* 温度调节器 */
+        .temp-adjust {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 14px;
+            background: rgba(0,0,0,0.02);
+            padding: 8px 12px;
+            border-radius: 48px;
+        }
+        .temp-value-display {
+            background: #eef3fc;
+            padding: 5px 14px;
+            border-radius: 40px;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        .temp-btns {
+            display: flex;
+            gap: 12px;
+        }
+        .icon-circle {
+            background: rgba(0, 0, 0, 0.05);
+            border: none;
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: 0.2s;
+            color: #2c4a5e;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .icon-circle:active {
+            transform: scale(0.94);
+            background: rgba(0,0,0,0.1);
+        }
+        .update-timestamp {
+            font-size: 0.65rem;
+            color: #8ca2b4;
+            margin-top: 1rem;
+            text-align: right;
+            border-top: 1px solid rgba(0,0,0,0.04);
+            padding-top: 0.7rem;
+        }
+
+        /* 舵机按钮特殊样式 */
+        .servo-btn {
+            background: rgba(44, 125, 94, 0.1);
+            border: 1px solid rgba(44, 125, 94, 0.3);
+            padding: 8px 16px;
+            border-radius: 40px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 12px;
+            width: 100%;
+            justify-content: center;
+        }
+        .servo-btn:hover {
+            background: rgba(44, 125, 94, 0.2);
+            transform: scale(0.98);
+        }
+        .angle-display {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #2c7d5e;
+            margin-left: 6px;
+        }
+
+        /* ========== 扩展洞察区样式 ========== */
+        .insight-section {
+            margin: 1.8rem 0 0.8rem;
+        }
+        .insight-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+        .insight-card {
+            background: rgba(255, 255, 255, 0.68);
+            backdrop-filter: blur(12px);
+            border-radius: 1.6rem;
+            padding: 1.2rem 1.5rem;
+            border: 1px solid rgba(255,255,255,0.8);
+            transition: all 0.2s;
+        }
+        .insight-title {
+            font-weight: 500;
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #2c4a5e;
+            border-left: 3px solid #2c7d5e;
+            padding-left: 0.75rem;
+        }
+        .light-advice {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(0,0,0,0.02);
+            border-radius: 1.2rem;
+            padding: 0.8rem 1rem;
+            margin-bottom: 0.8rem;
+        }
+        .advice-text {
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        .quick-action-btn {
+            background: rgba(44, 125, 94, 0.15);
+            border: none;
+            padding: 0.3rem 1rem;
+            border-radius: 40px;
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: #2c7d5e;
+            cursor: pointer;
+            transition: 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .quick-action-btn:hover {
+            background: rgba(44, 125, 94, 0.3);
+        }
+        .comfort-score {
+            font-size: 2rem;
+            font-weight: 600;
+            color: #2c7d5e;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        .data-history {
+            max-height: 180px;
+            overflow-y: auto;
+        }
+        .history-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+        .scene-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+        .scene-btn {
+            background: rgba(0,0,0,0.03);
+            border: 1px solid rgba(0,0,0,0.08);
+            padding: 6px 14px;
+            border-radius: 40px;
+            font-size: 0.7rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .scene-btn:hover {
+            background: rgba(44, 125, 94, 0.1);
+            border-color: rgba(44, 125, 94, 0.3);
+        }
+        .badge-icon {
+            font-size: 0.7rem;
+            background: rgba(0,0,0,0.05);
+            border-radius: 40px;
+            padding: 2px 8px;
+        }
+
+        /* 响应式 */
+        @media (max-width: 680px) {
+            body {
+                padding: 1.2rem;
+            }
+            .value-large {
+                font-size: 2.3rem;
+            }
+            .glass-card {
+                padding: 1.2rem;
+            }
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 2rem;
+            font-size: 0.7rem;
+            color: #8aa0ae;
+        }
+        i, .fas, .far {
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <!-- 头部区 -->
+    <div class="hero">
+        <div class="brand">
+            <h1><i class="fas fa-feather-alt" style="font-size: 1.6rem; color: #2c7d5e;"></i> 屿·智域</h1>
+            <p>静谧感知 · 无形交互</p>
+        </div>
+        <div class="conn-status" id="connStatusWidget">
+            <span class="led" id="connLed"></span>
+            <span id="connText">初始化</span>
+        </div>
+    </div>
+
+    <!-- 传感器数据区：温湿度 + 光照 + 震动 -->
+    <div class="sensor-dashboard">
+        <!-- 温湿度一体卡 -->
+        <div class="glass-card">
+            <div class="card-header">
+                <h3><i class="fas fa-leaf"></i> 微气候</h3>
+                <i class="fas fa-chart-simple" style="opacity: 0.5;"></i>
+            </div>
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap; justify-content: space-between;">
+                <div style="flex:1">
+                    <div class="value-large">
+                        <span id="tempDisplay">--</span><span class="unit-sm">°C</span>
+                    </div>
+                    <div class="sensor-footer"><i class="fas fa-thermometer-half"></i> 体感 · <span id="tempFeel">等待数据</span></div>
+                </div>
+                <div style="flex:1">
+                    <div class="value-large">
+                        <span id="humiDisplay">--</span><span class="unit-sm">%RH</span>
+                    </div>
+                    <div class="sensor-footer"><i class="fas fa-tint"></i> 湿度 · <span id="humiLevel">---</span></div>
+                </div>
+            </div>
+            <div class="progress-bar-bg"><div class="progress-fill" id="humidityBar" style="width:0%"></div></div>
+            <div class="update-timestamp"><i class="far fa-clock"></i> 温湿度更新: <span id="dhtTimestamp">--:--:--</span></div>
+        </div>
+
+        <!-- 光照强度卡 -->
+        <div class="glass-card">
+            <div class="card-header">
+                <h3><i class="fas fa-sun"></i> 光环境</h3>
+                <i class="fas fa-waveform"></i>
+            </div>
+            <div class="value-large">
+                <span id="luxDisplay">--</span><span class="unit-sm">lux</span>
+            </div>
+            <div class="progress-bar-bg"><div class="progress-fill light-fill" id="lightBarFill" style="width:0%"></div></div>
+            <div class="sensor-footer" style="justify-content: space-between; margin-top: 6px;">
+                <span><i class="far fa-lightbulb"></i> <span id="lightDesc">环境待读取</span></span>
+                <span><i class="far fa-clock"></i> 更新: <span id="lightTimestamp">--:--:--</span></span>
+            </div>
+        </div>
+
+        <!-- 新增：震动传感器卡片（家居化表达） -->
+        <div class="glass-card" id="shockCard">
+            <div class="card-header">
+                <h3><i class="fas fa-shield-alt"></i> 静谧守护</h3>
+                <i class="fas fa-waveform"></i>
+            </div>
+            <div id="shockStatusContainer" class="shock-status shock-inactive">
+                <i class="fas fa-home shock-icon"></i>
+                <span class="shock-text" id="shockText">静谧安宁</span>
+            </div>
+            <div class="sensor-footer" style="justify-content: center; gap: 12px;">
+                <span><i class="fas fa-bell"></i> 实时感知家中动态</span>
+                <span><i class="far fa-clock"></i> 更新: <span id="shockTimestamp">--:--:--</span></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 智能控制区 -->
+    <div class="control-panel">
+        <div class="control-grid">
+            <!-- 主照明控制 -->
+            <div class="ctrl-card">
+                <div class="ctrl-header">
+                    <div class="device-title"><i class="fas fa-lightbulb"></i> 情境照明</div>
+                    <label class="toggle">
+                        <input type="checkbox" id="lightControlToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="sensor-footer" style="margin-top: 0.2rem;"><i class="fas fa-moon"></i> 一键氛围切换</div>
+                <div class="update-timestamp" style="margin-top: 12px;"><i class="fas fa-broadcast-tower"></i> 指令实时下发</div>
+            </div>
+
+            <!-- 温控中枢 -->
+            <div class="ctrl-card">
+                <div class="ctrl-header">
+                    <div class="device-title"><i class="fas fa-wind"></i> 空气调节</div>
+                    <label class="toggle">
+                        <input type="checkbox" id="acPowerToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="temp-adjust">
+                    <span style="font-size: 0.85rem;">目标温度</span>
+                    <div class="temp-value-display" id="targetTempDisplay">22°C</div>
+                    <div class="temp-btns">
+                        <button class="icon-circle" id="tempMinusBtn"><i class="fas fa-minus"></i></button>
+                        <button class="icon-circle" id="tempPlusBtn"><i class="fas fa-plus"></i></button>
+                    </div>
+                </div>
+                <div class="sensor-footer" style="margin-top: 12px; font-size: 0.7rem;"><i class="fas fa-charging-station"></i> 智慧节能 · 恒享舒适</div>
+            </div>
+        </div>
+
+        <!-- ========== 执行器区域：星芒氛围灯、悦耳提示器、舵机 ========== -->
+        <div class="control-title" style="margin-top: 0.5rem;">
+            <i class="fas fa-microchip"></i> 灵动执行器
+        </div>
+        <div class="control-grid">
+            <!-- LED 灯控制 (星芒氛围灯) -->
+            <div class="ctrl-card">
+                <div class="ctrl-header">
+                    <div class="device-title"><i class="fas fa-star-of-life"></i> 星芒氛围灯</div>
+                    <label class="toggle">
+                        <input type="checkbox" id="ledActuatorToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="sensor-footer" style="margin-top: 0.2rem;"><i class="fas fa-magic"></i> 指令: a(开) / b(关)</div>
+                <div class="update-timestamp" style="margin-top: 12px;"><i class="fas fa-broadcast-tower"></i> 主题: wangjiayu/cmd</div>
+            </div>
+
+            <!-- 蜂鸣器控制 (悦耳提示器) -->
+            <div class="ctrl-card">
+                <div class="ctrl-header">
+                    <div class="device-title"><i class="fas fa-bell"></i> 悦耳提示器</div>
+                    <label class="toggle">
+                        <input type="checkbox" id="buzzerActuatorToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="sensor-footer" style="margin-top: 0.2rem;"><i class="fas fa-ear-listen"></i> 指令: c(开) / d(关)</div>
+                <div class="update-timestamp" style="margin-top: 12px;"><i class="fas fa-broadcast-tower"></i> 主题: wangjiayu/cmd</div>
+            </div>
+
+            <!-- 舵机控制 -->
+            <div class="ctrl-card">
+                <div class="ctrl-header">
+                    <div class="device-title"><i class="fas fa-cogs"></i> 灵动舵机</div>
+                    <span style="font-size: 0.8rem; color: #70879b;">步进 30°</span>
+                </div>
+                <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px;">
+                    <span class="sensor-footer">当前角度</span>
+                    <span class="angle-display" id="servoAngleDisplay">0°</span>
+                </div>
+                <button id="servoStepBtn" class="servo-btn"><i class="fas fa-arrow-right"></i> 转动 +30°</button>
+                <div class="update-timestamp" style="margin-top: 12px;"><i class="fas fa-broadcast-tower"></i> 指令: e (每次递增)</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 扩展洞察区 ========== -->
+    <div class="insight-section">
+        <div class="insight-grid">
+            <!-- 光照智能提醒卡片（跟随光照强度变化） -->
+            <div class="insight-card">
+                <div class="insight-title"><i class="fas fa-lightbulb"></i> 光照智感提醒</div>
+                <div id="dynamicLightAdvice" class="light-advice">
+                    <span class="advice-text">光线充足，保持现状</span>
+                    <button id="quickLightBtn" class="quick-action-btn"><i class="fas fa-bolt"></i> 一键优化</button>
+                </div>
+                <div class="sensor-footer" style="margin-top: 0.5rem;"><i class="fas fa-chart-line"></i> 依据实时光照强度智能推荐</div>
+            </div>
+
+            <!-- 舒适度指数 + 小建议 -->
+            <div class="insight-card">
+                <div class="insight-title"><i class="fas fa-heartbeat"></i> 体感舒适指数</div>
+                <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;">
+                    <span class="comfort-score" id="comfortScore">--</span>
+                    <span class="badge-icon" id="comfortDesc">--</span>
+                </div>
+                <div class="sensor-footer" id="comfortAdvice" style="margin-top: 8px;">根据温湿度动态评估</div>
+            </div>
+
+            <!-- 近期数据快览 -->
+            <div class="insight-card">
+                <div class="insight-title"><i class="fas fa-chart-simple"></i> 近期感知轨迹</div>
+                <div class="data-history" id="historyList">
+                    <div class="history-item">等待数据流入...</div>
+                </div>
+                <div class="sensor-footer" style="margin-top: 6px;">最近5条温湿度/光照记录</div>
+            </div>
+
+            <!-- 场景模式预设 -->
+            <div class="insight-card">
+                <div class="insight-title"><i class="fas fa-magic"></i> 情景智联 (预置)</div>
+                <div class="scene-buttons">
+                    <button class="scene-btn" data-scene="reading"><i class="fas fa-book-open"></i> 阅读模式</button>
+                    <button class="scene-btn" data-scene="sleep"><i class="fas fa-bed"></i> 睡眠模式</button>
+                    <button class="scene-btn" data-scene="movie"><i class="fas fa-film"></i> 影音模式</button>
+                </div>
+                <div class="sensor-footer" style="margin-top: 10px;">一键触发组合场景 (后续可扩展更多联动)</div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <i class="fas fa-sync-alt"></i> 实时MQTT数据流 · 沉浸式感知 · 扩展执行器已就绪
+    </footer>
+</div>
+
+<script>
+    // ---------- MQTT 配置 ----------
+    const BROKER_URL = 'ws://itmojun.com:8083/mqtt';
+    const TOPIC_DHT = 'wangjiayu/sensor/dht11';
+    const TOPIC_LIGHT = 'wangjiayu/sensor/light';
+    const TOPIC_SHOCK = 'wangjiayu/sensor/shock';      // 新增震动传感器主题
+    const TOPIC_CTRL_LIGHT = 'wangjiayu/control/light';
+    const TOPIC_CTRL_AC = 'wangjiayu/control/ac';
+    const TOPIC_ACTUATOR_CMD = 'wangjiayu/cmd';
+
+    let mqttClient = null;
+    let manualDisconnect = false;
+
+    // DOM 元素绑定
+    const tempDisplaySpan = document.getElementById('tempDisplay');
+    const humiDisplaySpan = document.getElementById('humiDisplay');
+    const tempFeelSpan = document.getElementById('tempFeel');
+    const humiLevelSpan = document.getElementById('humiLevel');
+    const humidityBarFill = document.getElementById('humidityBar');
+    const dhtTimestampSpan = document.getElementById('dhtTimestamp');
+    const luxDisplaySpan = document.getElementById('luxDisplay');
+    const lightBarFill = document.getElementById('lightBarFill');
+    const lightDescSpan = document.getElementById('lightDesc');
+    const lightTimestampSpan = document.getElementById('lightTimestamp');
+    const connLed = document.getElementById('connLed');
+    const connTextSpan = document.getElementById('connText');
+
+    // 震动传感器相关 DOM
+    const shockCard = document.getElementById('shockCard');
+    const shockTextSpan = document.getElementById('shockText');
+    const shockTimestampSpan = document.getElementById('shockTimestamp');
+    const shockStatusContainer = document.getElementById('shockStatusContainer');
+
+    // 原有控制UI
+    const lightToggleCheck = document.getElementById('lightControlToggle');
+    const acPowerToggle = document.getElementById('acPowerToggle');
+    const targetTempDisplaySpan = document.getElementById('targetTempDisplay');
+    const tempMinusBtn = document.getElementById('tempMinusBtn');
+    const tempPlusBtn = document.getElementById('tempPlusBtn');
+
+    // 执行器UI
+    const ledActuatorToggle = document.getElementById('ledActuatorToggle');
+    const buzzerActuatorToggle = document.getElementById('buzzerActuatorToggle');
+    const servoStepBtn = document.getElementById('servoStepBtn');
+    const servoAngleDisplaySpan = document.getElementById('servoAngleDisplay');
+
+    // 扩展UI
+    const dynamicLightAdviceDiv = document.getElementById('dynamicLightAdvice');
+    const quickLightBtn = document.getElementById('quickLightBtn');
+    const comfortScoreSpan = document.getElementById('comfortScore');
+    const comfortDescSpan = document.getElementById('comfortDesc');
+    const comfortAdviceSpan = document.getElementById('comfortAdvice');
+    const historyListDiv = document.getElementById('historyList');
+
+    // 内部状态
+    let currentLightState = false;
+    let currentAcPower = false;
+    let currentTargetTemp = 22;
+    let currentLedState = false;
+    let currentBuzzerState = false;
+    let currentServoAngle = 0;
+    let currentShockState = false;   // false: 安静, true: 震动
+
+    // 传感器缓存值
+    let latestTemp = null;
+    let latestHumi = null;
+    let latestLux = null;
+
+    // 历史数据存储 (最多保留8条)
+    let historyData = []; // 每个元素: { time, temp, humi, lux }
+
+    // 辅助函数: 获取当前时间字符串 HH:MM:SS
+    function getTimeStr() {
+        const d = new Date();
+        return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
+    }
+
+    // 更新历史记录展示
+    function updateHistoryUI() {
+        if (historyData.length === 0) {
+            historyListDiv.innerHTML = '<div class="history-item">暂无历史数据，等待传感器数据...</div>';
+            return;
+        }
+        let html = '';
+        const recent = [...historyData].reverse().slice(0, 5);
+        for (let item of recent) {
+            html += `<div class="history-item">
+                        <span>${item.time}</span>
+                        <span>🌡️${item.temp !== null ? item.temp.toFixed(1)+'°C' : '--'}</span>
+                        <span>💧${item.humi !== null ? item.humi+'%' : '--'}</span>
+                        <span>☀️${item.lux !== null ? item.lux+'lx' : '--'}</span>
+                     </div>`;
+        }
+        historyListDiv.innerHTML = html;
+    }
+
+    // 添加历史记录
+    function addHistoryRecord() {
+        historyData.unshift({
+            time: getTimeStr(),
+            temp: latestTemp,
+            humi: latestHumi,
+            lux: latestLux
+        });
+        if (historyData.length > 12) historyData.pop();
+        updateHistoryUI();
+    }
+
+    // 更新震动传感器UI (家居化表达)
+    function updateShockUI() {
+        if (currentShockState) {
+            shockTextSpan.innerText = '⚠️ 检测到震动';
+            shockStatusContainer.className = 'shock-status shock-active';
+            // 图标变为震动图标
+            shockStatusContainer.querySelector('.shock-icon').className = 'fas fa-waveform shock-icon';
+        } else {
+            shockTextSpan.innerText = '✅ 静谧安宁';
+            shockStatusContainer.className = 'shock-status shock-inactive';
+            shockStatusContainer.querySelector('.shock-icon').className = 'fas fa-home shock-icon';
+        }
+    }
+
+    // 处理震动消息 (payload 为 '1' 或 '0')
+    function onShockMessage(payload) {
+        const val = parseInt(payload.trim(), 10);
+        if (val === 1) {
+            currentShockState = true;
+        } else if (val === 0) {
+            currentShockState = false;
+        } else {
+            console.warn('震动消息格式异常:', payload);
+            return;
+        }
+        updateShockUI();
+        shockTimestampSpan.innerText = getTimeStr();
+        // 震动时卡片短暂闪烁动画（CSS已处理）
+        shockCard.style.transition = 'background 0.2s';
+        shockCard.style.backgroundColor = currentShockState ? 'rgba(239, 68, 68, 0.1)' : 'rgba(255, 255, 255, 0.72)';
+        setTimeout(() => {
+            if (shockCard) shockCard.style.backgroundColor = '';
+        }, 300);
+    }
+
+    // 更新光照智能提醒
+    function updateLightAdvice() {
+        if (!dynamicLightAdviceDiv) return;
+        const adviceSpan = dynamicLightAdviceDiv.querySelector('.advice-text');
+        if (latestLux === null) {
+            adviceSpan.innerText = '等待光照数据...';
+            quickLightBtn.disabled = true;
+            return;
+        }
+        quickLightBtn.disabled = false;
+        let advice = '';
+        if (latestLux < 50) {
+            advice = '🌙 光线昏暗，建议开启主照明，保护视力';
+        } else if (latestLux < 200) {
+            advice = '🌓 光线偏暗，适当补充光源更舒适';
+        } else if (latestLux < 600) {
+            advice = '☀️ 光线舒适，非常适合阅读或工作';
+        } else {
+            advice = '✨ 光线充沛，可适当减少人工照明节能';
+        }
+        adviceSpan.innerHTML = `<i class="fas fa-info-circle"></i> ${advice}`;
+        if (latestLux < 150 && !currentLightState) {
+            adviceSpan.style.color = '#d97706';
+        } else {
+            adviceSpan.style.color = 'inherit';
+        }
+    }
+
+    // 更新舒适度指数
+    function updateComfortIndex() {
+        if (latestTemp === null || latestHumi === null) {
+            comfortScoreSpan.innerText = '--';
+            comfortDescSpan.innerText = '等待数据';
+            comfortAdviceSpan.innerText = '传感器数据接入后将自动评估';
+            return;
+        }
+        let tempScore = 100 - Math.min(100, Math.abs(latestTemp - 23) * 4);
+        let humScore = 100 - Math.min(100, Math.abs(latestHumi - 55) * 1.5);
+        let totalScore = Math.floor((tempScore + humScore) / 2);
+        totalScore = Math.min(100, Math.max(0, totalScore));
+        comfortScoreSpan.innerText = totalScore;
+        let desc = '';
+        let advice = '';
+        if (totalScore >= 85) {
+            desc = '非常舒适';
+            advice = '当前环境极佳，适宜放松或专注';
+        } else if (totalScore >= 65) {
+            desc = '较为舒适';
+            advice = '微调空调或加湿可提升体验';
+        } else if (totalScore >= 40) {
+            desc = '一般';
+            advice = '建议调节温湿度至理想区间';
+        } else {
+            desc = '不舒适';
+            advice = '温湿度偏离较大，开启空调或除湿';
+        }
+        comfortDescSpan.innerText = desc;
+        comfortAdviceSpan.innerText = advice;
+    }
+
+    // 更新温湿度UI
+    function updateTempHumiUI() {
+        if (latestTemp !== null) {
+            tempDisplaySpan.innerText = latestTemp.toFixed(1);
+            if (latestTemp < 10) tempFeelSpan.innerText = '冷冽 ❄️';
+            else if (latestTemp < 18) tempFeelSpan.innerText = '清冷 🍃';
+            else if (latestTemp < 26) tempFeelSpan.innerText = '宜人 🌿';
+            else if (latestTemp < 32) tempFeelSpan.innerText = '微暖 🌞';
+            else tempFeelSpan.innerText = '炎热 🔥';
+        } else {
+            tempDisplaySpan.innerText = '--';
+            tempFeelSpan.innerText = '等待数据';
+        }
+        if (latestHumi !== null) {
+            humiDisplaySpan.innerText = latestHumi;
+            let percent = Math.min(100, Math.max(0, latestHumi));
+            humidityBarFill.style.width = `${percent}%`;
+            if (latestHumi < 30) humiLevelSpan.innerText = '干燥 · 润泽建议';
+            else if (latestHumi < 55) humiLevelSpan.innerText = '舒适区间';
+            else if (latestHumi < 75) humiLevelSpan.innerText = '微潮 · 通风';
+            else humiLevelSpan.innerText = '湿润 · 除湿';
+        } else {
+            humiDisplaySpan.innerText = '--';
+            humiLevelSpan.innerText = '---';
+            humidityBarFill.style.width = '0%';
+        }
+        updateComfortIndex();
+    }
+
+    // 光照UI
+    function updateLightUI() {
+        if (latestLux !== null) {
+            luxDisplaySpan.innerText = latestLux;
+            let percent = Math.min(100, Math.floor((latestLux / 1000) * 100));
+            if (latestLux > 1000) percent = 100;
+            lightBarFill.style.width = `${percent}%`;
+            if (latestLux < 50) lightDescSpan.innerText = '昏暗 · 建议补光';
+            else if (latestLux < 200) lightDescSpan.innerText = '柔和暮光';
+            else if (latestLux < 600) lightDescSpan.innerText = '明亮清爽';
+            else lightDescSpan.innerText = '充沛自然光';
+        } else {
+            luxDisplaySpan.innerText = '--';
+            lightBarFill.style.width = '0%';
+            lightDescSpan.innerText = '等待数据';
+        }
+        updateLightAdvice();
+    }
+
+    // MQTT 消息处理
+    function onDHTMessage(payload) {
+        try {
+            const parts = payload.trim().split('_');
+            if (parts.length >= 2) {
+                let temp = parseFloat(parts[0]);
+                let hum = parseInt(parts[1], 10);
+                if (!isNaN(temp)) latestTemp = temp;
+                if (!isNaN(hum)) latestHumi = hum;
+                updateTempHumiUI();
+                dhtTimestampSpan.innerText = getTimeStr();
+                addHistoryRecord();
+            }
+        } catch (err) { console.error('解析温湿度错误', err); }
+    }
+
+    function onLightMessage(payload) {
+        let luxVal = parseInt(payload.trim(), 10);
+        if (!isNaN(luxVal)) {
+            latestLux = luxVal;
+            updateLightUI();
+            lightTimestampSpan.innerText = getTimeStr();
+            addHistoryRecord();
+        }
+    }
+
+    // 发布控制指令
+    function publishControl(topic, message) {
+        if (mqttClient && mqttClient.connected) {
+            mqttClient.publish(topic, message, { qos: 0 }, (err) => {
+                if (err) console.warn(`发布失败 ${topic}`);
+                else console.log(`指令发送: ${topic} -> ${message}`);
+            });
+        } else {
+            showFloatingHint("设备离线，指令暂存");
+        }
+    }
+
+    let toastTimer = null;
+    function showFloatingHint(msg) {
+        let toast = document.getElementById('dynamicToast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'dynamicToast';
+            toast.style.position = 'fixed';
+            toast.style.bottom = '20px';
+            toast.style.left = '50%';
+            toast.style.transform = 'translateX(-50%)';
+            toast.style.backgroundColor = 'rgba(30, 40, 50, 0.85)';
+            toast.style.backdropFilter = 'blur(8px)';
+            toast.style.color = 'white';
+            toast.style.padding = '8px 18px';
+            toast.style.borderRadius = '60px';
+            toast.style.fontSize = '0.75rem';
+            toast.style.zIndex = '2000';
+            toast.style.fontWeight = '500';
+            toast.style.whiteSpace = 'nowrap';
+            document.body.appendChild(toast);
+        }
+        toast.innerText = msg;
+        toast.style.opacity = '1';
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => { toast.style.opacity = '0'; }, 1800);
+    }
+
+    // 原有控制逻辑
+    function setLightControl(state) {
+        currentLightState = state;
+        lightToggleCheck.checked = state;
+        publishControl(TOPIC_CTRL_LIGHT, state ? 'ON' : 'OFF');
+        const card = lightToggleCheck.closest('.ctrl-card');
+        if (card) {
+            card.style.transition = 'background 0.2s';
+            card.style.backgroundColor = state ? 'rgba(255,245,210,0.45)' : 'rgba(255,255,255,0.68)';
+            setTimeout(() => card.style.backgroundColor = '', 300);
+        }
+        updateLightAdvice();
+    }
+
+    function setAcPower(state) {
+        currentAcPower = state;
+        acPowerToggle.checked = state;
+        let msg = state ? `POWER_ON_TEMP_${currentTargetTemp}` : 'POWER_OFF';
+        publishControl(TOPIC_CTRL_AC, msg);
+    }
+
+    function adjustTargetTemp(delta) {
+        let newTemp = currentTargetTemp + delta;
+        if (newTemp >= 16 && newTemp <= 30) {
+            currentTargetTemp = newTemp;
+            targetTempDisplaySpan.innerText = currentTargetTemp + '°C';
+            if (!currentAcPower) setAcPower(true);
+            else publishControl(TOPIC_CTRL_AC, `TEMP_SET_${currentTargetTemp}`);
+        }
+    }
+
+    // 执行器控制
+    function setLedActuator(state) {
+        currentLedState = state;
+        ledActuatorToggle.checked = state;
+        const cmd = state ? 'a' : 'b';
+        publishControl(TOPIC_ACTUATOR_CMD, cmd);
+        const card = ledActuatorToggle.closest('.ctrl-card');
+        if (card) {
+            card.style.transition = 'background 0.2s';
+            card.style.backgroundColor = state ? 'rgba(44,125,94,0.1)' : 'rgba(255,255,255,0.68)';
+            setTimeout(() => card.style.backgroundColor = '', 300);
+        }
+    }
+
+    function setBuzzerActuator(state) {
+        currentBuzzerState = state;
+        buzzerActuatorToggle.checked = state;
+        const cmd = state ? 'c' : 'd';
+        publishControl(TOPIC_ACTUATOR_CMD, cmd);
+        const card = buzzerActuatorToggle.closest('.ctrl-card');
+        if (card) {
+            card.style.transition = 'background 0.2s';
+            card.style.backgroundColor = state ? 'rgba(245,158,11,0.1)' : 'rgba(255,255,255,0.68)';
+            setTimeout(() => card.style.backgroundColor = '', 300);
+        }
+    }
+
+    function stepServo() {
+        publishControl(TOPIC_ACTUATOR_CMD, 'e');
+        currentServoAngle = (currentServoAngle + 30) % 360;
+        servoAngleDisplaySpan.innerText = currentServoAngle + '°';
+        showFloatingHint(`舵机转动 30°，当前角度 ${currentServoAngle}°`);
+    }
+
+    // 快捷照明优化
+    function handleQuickLightOptimize() {
+        if (latestLux === null) {
+            showFloatingHint("等待光照数据");
+            return;
+        }
+        if (latestLux < 200 && !currentLightState) {
+            setLightControl(true);
+            showFloatingHint("已开启照明，提升亮度");
+        } else if (latestLux >= 600 && currentLightState) {
+            setLightControl(false);
+            showFloatingHint("光照充足，已关闭灯光节能");
+        } else if (latestLux < 200 && currentLightState) {
+            showFloatingHint("灯光已开，光线仍然偏暗，可增加辅助光源");
+        } else {
+            showFloatingHint("当前光环境适宜，无需调整");
+        }
+    }
+
+    // 场景模式
+    function applyScene(scene) {
+        if (scene === 'reading') {
+            setLightControl(true);
+            if (!currentAcPower) setAcPower(true);
+            adjustTargetTemp(0);
+            showFloatingHint("阅读模式：灯光开启，空调舒适");
+        } else if (scene === 'sleep') {
+            setLightControl(false);
+            setAcPower(true);
+            if (currentTargetTemp > 24) adjustTargetTemp(-2);
+            showFloatingHint("睡眠模式：灯光关闭，温度稍降");
+        } else if (scene === 'movie') {
+            setLightControl(false);
+            setAcPower(true);
+            showFloatingHint("影音模式：灯光关闭，氛围优先");
+        }
+    }
+
+    // MQTT 连接
+    function connectMqtt() {
+        if (mqttClient) try { mqttClient.end(true); } catch(e) {}
+        connLed.className = 'led connecting';
+        connTextSpan.innerText = '建立链路中';
+        const clientId = 'webui_' + Math.random().toString(16).substring(2, 10);
+        mqttClient = mqtt.connect(BROKER_URL, { keepalive: 45, clean: true, reconnectPeriod: 4000, connectTimeout: 10000, clientId });
+        mqttClient.on('connect', () => {
+            connLed.className = 'led online';
+            connTextSpan.innerText = '实时在线';
+            mqttClient.subscribe(TOPIC_DHT, { qos: 0 });
+            mqttClient.subscribe(TOPIC_LIGHT, { qos: 0 });
+            mqttClient.subscribe(TOPIC_SHOCK, { qos: 0 });
+            // 同步状态
+            if (currentLightState) publishControl(TOPIC_CTRL_LIGHT, 'ON');
+            if (currentAcPower) publishControl(TOPIC_CTRL_AC, `POWER_ON_TEMP_${currentTargetTemp}`);
+            if (currentLedState) publishControl(TOPIC_ACTUATOR_CMD, 'a');
+            else publishControl(TOPIC_ACTUATOR_CMD, 'b');
+            if (currentBuzzerState) publishControl(TOPIC_ACTUATOR_CMD, 'c');
+            else publishControl(TOPIC_ACTUATOR_CMD, 'd');
+        });
+        mqttClient.on('message', (topic, message) => {
+            const payload = message.toString();
+            if (topic === TOPIC_DHT) onDHTMessage(payload);
+            else if (topic === TOPIC_LIGHT) onLightMessage(payload);
+            else if (topic === TOPIC_SHOCK) onShockMessage(payload);
+        });
+        mqttClient.on('error', () => { connLed.className = 'led offline'; connTextSpan.innerText = '连接异常'; });
+        mqttClient.on('close', () => { if (!manualDisconnect) { connLed.className = 'led offline'; connTextSpan.innerText = '离线·重连'; } });
+        mqttClient.on('reconnect', () => { connLed.className = 'led connecting'; connTextSpan.innerText = '重连中...'; });
+    }
+
+    // 绑定事件
+    function bindControls() {
+        lightToggleCheck.addEventListener('change', (e) => setLightControl(e.target.checked));
+        acPowerToggle.addEventListener('change', (e) => setAcPower(e.target.checked));
+        tempMinusBtn.addEventListener('click', () => adjustTargetTemp(-1));
+        tempPlusBtn.addEventListener('click', () => adjustTargetTemp(1));
+        quickLightBtn.addEventListener('click', handleQuickLightOptimize);
+        document.querySelectorAll('.scene-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => applyScene(btn.dataset.scene));
+        });
+
+        ledActuatorToggle.addEventListener('change', (e) => setLedActuator(e.target.checked));
+        buzzerActuatorToggle.addEventListener('change', (e) => setBuzzerActuator(e.target.checked));
+        servoStepBtn.addEventListener('click', stepServo);
+
+        setLightControl(false);
+        setAcPower(false);
+        setLedActuator(false);
+        setBuzzerActuator(false);
+        targetTempDisplaySpan.innerText = currentTargetTemp + '°C';
+        servoAngleDisplaySpan.innerText = currentServoAngle + '°';
+        updateShockUI(); // 初始显示安静状态
+    }
+
+    window.addEventListener('beforeunload', () => {
+        if (mqttClient && mqttClient.connected) { manualDisconnect = true; mqttClient.end(true); }
+    });
+
+    function init() {
+        bindControls();
+        connectMqtt();
+        updateTempHumiUI();
+        updateLightUI();
+        updateLightAdvice();
+    }
+    init();
+</script>
+</body>
+</html>
