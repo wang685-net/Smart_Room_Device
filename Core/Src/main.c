@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "adc.h"
+#include "i2c.h"
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
@@ -30,6 +31,7 @@
 #include "dht11.h"
 #include "light.h"
 #include "servo.h"
+#include "sht3x.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -81,7 +83,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
+SHT3X_Init();
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -97,6 +99,7 @@ int main(void)
   MX_TIM2_Init();
   MX_USART2_UART_Init();
   MX_TIM3_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
 	DHT11_Init();
 	Servo_Init();
@@ -107,19 +110,20 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 	float temp = 0;
-	uint8_t humi = 0;
+	float humi = 0;
 	uint32_t light;
 	uint8_t shock;
+	uint8_t switch_state = 0;
 	char upload_data[100];
 	
 	
   while (1)
   {
 		// 采集一次温湿度数据
-		if(DHT11_Get(&temp, &humi) == 0)
+		if(SHT3X_Get(&temp, &humi) == 0)
 		{
 			// 如果采集温湿度数据成功，就上传云端
-			sprintf(upload_data, "%s/sensor/dht11 %.1f_%u\n", DEVCIE_ID, temp, humi);
+			sprintf(upload_data, "%s/sensor/dht11 %.1f_%.1f\n", DEVCIE_ID, temp, humi);
 			HAL_UART_Transmit(&huart2, (uint8_t*)upload_data, strlen(upload_data), 1000);
 		}
 		
@@ -133,7 +137,21 @@ int main(void)
 		sprintf(upload_data, "%s/sensor/shock %u\n", DEVCIE_ID, shock);
 		HAL_UART_Transmit(&huart2, (uint8_t*)upload_data, strlen(upload_data), 1000);
     
+		// 上传各种设备状态数据
 		
+		// 获取蜂鸣器状态并上传
+		switch_state = HAL_GPIO_ReadPin(BUZZER_GPIO_Port, BUZZER_Pin);
+		
+		sprintf(upload_data, "%s/state/buzzer %u\n", DEVCIE_ID, switch_state);
+		HAL_UART_Transmit(&huart2, (uint8_t*)upload_data, strlen(upload_data), 1000);
+		
+		//获取LED 的状态并上传
+		switch_state = HAL_GPIO_ReadPin(LED2_GPIO_Port, LED2_Pin);
+		
+		sprintf(upload_data, "%s/state/led %u\n", DEVCIE_ID, switch_state);
+		HAL_UART_Transmit(&huart2, (uint8_t*)upload_data, strlen(upload_data), 1000);
+		
+		// 其他需要上传的设备状态数据可以在这里进行扩展
 		
 		// 采集周期为 2S
 		HAL_Delay(2000);
